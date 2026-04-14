@@ -1,0 +1,116 @@
+Sub CountPagesInFolder()
+    Dim folderPath As String
+    Dim fileName As String
+    Dim filePath As String
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim bookTotalPages As Long
+    Dim totalAllPages As Long
+    Dim pageCount As Long
+    
+    Dim outSheet As Worksheet
+    Dim outRow As Long
+    
+    ' 1. 検索対象のフォルダパスを指定（※ご自身の環境に合わせて変更してください）
+    folderPath = "C:\path\to\your\folder"
+    
+    ' フォルダパスの末尾に「\」がない場合は補完する
+    If Right(folderPath, 1) <> "\" Then folderPath = folderPath & "\"
+    
+    ' 出力先シートの準備（このマクロを実行しているシートに出力します）
+    Set outSheet = ThisWorkbook.ActiveSheet
+    outSheet.Cells.Clear ' シートを初期化
+    outSheet.Range("A1:C1").Value = Array("ファイル名", "シート名", "ページ数")
+    outSheet.Range("A1:C1").Interior.Color = RGB(220, 230, 241)
+    outSheet.Range("A1:C1").Font.Bold = True
+    outRow = 2
+
+    ' 安全対策1: 画面の描画を停止し、警告ポップアップを出さない
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    ' 追加の安全対策: 開いたブック内のマクロ（Workbook_Openなど）が自動実行されるのを防ぐ
+    Application.EnableEvents = False
+
+    ' フォルダ内の .xlsx ファイルを取得（Dir関数を使用）
+    fileName = Dir(folderPath & "*.xlsx")
+    totalAllPages = 0
+
+    ' ファイルが見つからなくなるまでループ
+    Do While fileName <> ""
+        
+        ' 安全対策2: Excelが裏で作る一時ファイル（~$から始まるファイル）はスキップする
+        If Left(fileName, 2) <> "~$" Then
+            filePath = folderPath & fileName
+            bookTotalPages = 0
+            
+            ' エラーが発生した場合は ErrorHandler へジャンプ
+            On Error GoTo ErrorHandler
+
+            ' 安全対策3: ReadOnly:=True で読み取り専用として開く
+            ' UpdateLinks:=0 で外部参照リンクの更新を無効化する
+            Set wb = Workbooks.Open(Filename:=filePath, ReadOnly:=True, UpdateLinks:=0)
+            
+            ' ブック内のすべてのシートをループ
+            For Each ws In wb.Worksheets
+                ' ページ数を取得
+                pageCount = ws.PageSetup.Pages.Count
+                
+                ' 結果をシートに出力
+                outSheet.Cells(outRow, 1).Value = fileName
+                outSheet.Cells(outRow, 2).Value = ws.Name
+                outSheet.Cells(outRow, 3).Value = pageCount
+                outRow = outRow + 1
+                
+                bookTotalPages = bookTotalPages + pageCount
+            Next ws
+            
+            ' ファイルごとの小計を出力
+            outSheet.Cells(outRow, 1).Value = ">> " & fileName & " の合計"
+            outSheet.Cells(outRow, 3).Value = bookTotalPages
+            outSheet.Rows(outRow).Font.Bold = True
+            outRow = outRow + 2
+            
+            totalAllPages = totalAllPages + bookTotalPages
+
+            ' 安全対策4: 万が一にも保存されないよう、SaveChanges:=False で閉じる
+            wb.Close SaveChanges:=False
+            
+            ' エラーハンドリングをリセット
+            On Error GoTo 0
+        End If
+
+NextFile:
+        ' 次のファイルを取得
+        fileName = Dir()
+    Loop
+
+    ' 最終結果の表示
+    outSheet.Cells(outRow, 1).Value = "【処理完了】フォルダ内の全ページの総数"
+    outSheet.Cells(outRow, 3).Value = totalAllPages
+    outSheet.Rows(outRow).Font.Bold = True
+    outSheet.Rows(outRow).Font.Color = vbRed
+
+ExitRoutine:
+    ' 最後に必ずExcelの設定を元に戻す
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.EnableEvents = True
+    
+    ' 完了メッセージ
+    MsgBox "処理が完了しました。" & vbCrLf & "総ページ数: " & totalAllPages & " ページ", vbInformation
+    Exit Sub
+
+ErrorHandler:
+    ' エラー時の処理
+    outSheet.Cells(outRow, 1).Value = "[エラー] " & fileName & " の処理中にエラーが発生しました。"
+    outSheet.Cells(outRow, 2).Value = Err.Description
+    outSheet.Rows(outRow).Font.Color = vbRed
+    outRow = outRow + 2
+    
+    ' ブックが開いたままになっていれば閉じる
+    If Not wb Is Nothing Then
+        wb.Close SaveChanges:=False
+    End If
+    Resume NextFile ' 次のファイルの処理へ戻る
+    
+End Sub
